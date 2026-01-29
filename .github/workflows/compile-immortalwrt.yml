@@ -10,10 +10,10 @@ on:
     paths:
       - '.config'
 
-# 编译环境：Ubuntu 20.04（GitHub云编译推荐版本）
+# 编译环境：Ubuntu 22.04（GitHub云编译推荐版本）
 jobs:
   compile:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - name: 1. 安装编译依赖
         run: |
