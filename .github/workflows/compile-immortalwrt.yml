@@ -1,6 +1,6 @@
-# ImmortalWrt MT7620A(SL-IR4) 云编译脚本 - 4线程+百分比进度版
-# 核心特性：4线程编译+实时百分比进度+国外源优先+智能容错+中文标题+Ubuntu22.04适配
-name: 编译ImmortalWrt固件 for MT7620A-SL-IR4 (4线程 | 百分比进度)
+# ImmortalWrt MT7620A-SL-IR4 云编译脚本 - 稳定版
+# 核心特性：2线程编译+阶段式进度提示+国外源优先+智能容错+无语法错误
+name: 编译ImmortalWrt固件 for MT7620A-SL-IR4 (稳定版)
 
 on:
   workflow_dispatch:
@@ -10,30 +10,33 @@ on:
       - 'configs/ramips/mt7620/config-mt7620a-sl-ir4'
 
 jobs:
-  compile_firmware:
+  compile_firmware:  # 合法的job ID（无中文）
     runs-on: ubuntu-22.04
-    timeout-minutes: 120  # 4线程编译提速，缩短全局超时
+    timeout-minutes: 120  # 适配2线程编译耗时
     defaults:
       run:
         shell: bash
         working-directory: .
 
     steps:
-      # 步骤1：安装编译依赖（优化内存配置，适配4线程）
-      - name: 步骤1/9 - 安装编译依赖（适配4线程）
+      # 步骤1：安装编译依赖+内存优化
+      - name: 步骤1/9 - 安装编译依赖（适配2线程）
+        id: step1_install_deps
         run: |
-          echo -e "\033[32m[开始] 安装Ubuntu22.04编译依赖（优化内存配置）...\033[0m"
+          echo -e "\033[32m[开始] 安装Ubuntu22.04编译依赖+内存优化...\033[0m"
+          # 优先使用Ubuntu官方国外源
           sudo sed -i 's/ports.ubuntu.com/archive.ubuntu.com/g' /etc/apt/sources.list
           sudo apt update -y && sudo apt full-upgrade -y -q --fix-missing
-          # 安装内存优化工具，适配4线程编译
+          # 安装完整依赖+ccache加速
           sudo apt install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
           gettext git libncurses5-dev libssl-dev python3-distutils rsync unzip zlib1g-dev file wget \
           curl subversion libxml2 libxml2-utils xsltproc qemu-utils upx-ucl autoconf automake \
           libtool autopoint make libncursesw5-dev libelf-dev swig libpcre3-dev pkg-config patch \
-          qemu-system-arm qemu-system-mips tree libssl3 libstdc++6 ccache  # 新增ccache加速编译
-          # 优化系统内存限制，避免4线程溢出
+          qemu-system-arm qemu-system-mips tree libssl3 libstdc++6 ccache
+          # 4G交换分区优化内存
           sudo sysctl -w vm.swappiness=10
           sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
+          # 清理冗余包
           sudo apt autoremove -y && sudo apt clean -y && sudo rm -rf /var/lib/apt/lists/*
           echo -e "\033[32m[完成] 依赖安装+内存优化成功！\033[0m"
         timeout-minutes: 10
@@ -41,6 +44,7 @@ jobs:
 
       # 步骤2：拉取ImmortalWrt源码（GitHub国外源）
       - name: 步骤2/9 - 拉取ImmortalWrt源码（GitHub源）
+        id: step2_pull_source
         uses: actions/checkout@v4
         with:
           repository: ${{ github.repository }}
@@ -50,15 +54,18 @@ jobs:
         timeout-minutes: 10
         continue-on-error: true
 
-      # 步骤3：初始化依赖源（优先GitHub）
+      # 步骤3：初始化依赖源（优先GitHub，移除冗余telephony）
       - name: 步骤3/9 - 初始化依赖源（优先GitHub）
+        id: step3_init_source
         run: |
           echo -e "\033[32m[开始] 初始化GitHub依赖源...\033[0m"
+          # 备份默认源
           cp feeds.conf.default feeds.conf.default.bak
+          # 仅保留核心源（移除telephony，避免找不到目录）
           echo "src-git-full packages https://github.com/immortalwrt/packages.git;openwrt-23.05" > feeds.conf.default
           echo "src-git-full luci https://github.com/immortalwrt/luci.git;openwrt-23.05" >> feeds.conf.default
           echo "src-git-full routing https://github.com/immortalwrt/routing.git;openwrt-23.05" >> feeds.conf.default
-          echo "src-git-full telephony https://github.com/immortalwrt/telephony.git;openwrt-23.05" >> feeds.conf.default
+          # 更新并安装feeds
           ./scripts/feeds update -a 2>&1 | tee ./feeds_update.log
           ./scripts/feeds install -a 2>&1 | tee ./feeds_install.log
           echo -e "\033[32m[完成] 依赖源初始化成功！\033[0m"
@@ -67,6 +74,7 @@ jobs:
 
       # 步骤4：加载SL-IR4专属配置
       - name: 步骤4/9 - 加载SL-IR4专属配置
+        id: step4_load_config
         run: |
           echo -e "\033[32m[开始] 加载MT7620A-SL-IR4配置...\033[0m"
           [ -f .config ] && { mv .config .config.bak; echo "[提示] 备份原有配置"; }
@@ -76,35 +84,47 @@ jobs:
         timeout-minutes: 6
         continue-on-error: true
 
-      # 步骤5：下载依赖包（智能容错+进度提示）
+      # 步骤5：下载依赖包（智能容错+2线程）
       - name: 步骤5/9 - 下载编译依赖包（智能容错）
+        id: step5_download_deps
         run: |
-          echo -e "\033[32m[开始] 下载依赖包（4线程，智能容错）...\033[0m"
+          echo -e "\033[32m[开始] 下载依赖包（2线程+智能容错）...\033[0m"
+          # 初始化重试参数
           retry_count=0
           switch_source_flag=0
           max_retry=12
           switch_retry=3
           
+          # 换源函数（GitHub备用源→国内源兜底）
           switch_source() {
-            echo -e "\033[33m[提示] 重试${retry_count}次，更换GitHub备用源...\033[0m"
+            echo -e "\033[33m[提示] 重试${retry_count}次，更换依赖源...\033[0m"
             cp feeds.conf.default.bak feeds.conf.default
-            echo "src-git-full packages https://github.com/openwrt/packages.git;openwrt-23.05" > feeds.conf.default
-            echo "src-git-full luci https://github.com/openwrt/luci.git;openwrt-23.05" >> feeds.conf.default
-            echo "src-git-full routing https://github.com/openwrt/routing.git;openwrt-23.05" >> feeds.conf.default
-            echo "src-git-full telephony https://github.com/openwrt/telephony.git;openwrt-23.05" >> feeds.conf.default
+            if [ $switch_source_flag -eq 0 ]; then
+              # 第一次换源：GitHub备用源
+              echo "src-git-full packages https://github.com/openwrt/packages.git;openwrt-23.05" > feeds.conf.default
+              echo "src-git-full luci https://github.com/openwrt/luci.git;openwrt-23.05" >> feeds.conf.default
+              echo "src-git-full routing https://github.com/openwrt/routing.git;openwrt-23.05" >> feeds.conf.default
+              switch_source_flag=1
+            else
+              # 第二次换源：国内源兜底
+              echo "src-git-full packages https://mirror.iscas.ac.cn/openwrt/packages.git;openwrt-23.05" > feeds.conf.default
+              echo "src-git-full luci https://mirror.iscas.ac.cn/openwrt/luci.git;openwrt-23.05" >> feeds.conf.default
+              echo "src-git-full routing https://mirror.iscas.ac.cn/openwrt/routing.git;openwrt-23.05" >> feeds.conf.default
+            fi
             ./scripts/feeds update -a 2>&1 | tee ./feeds_switch.log
-            switch_source_flag=1
           }
           
+          # 循环下载+重试
           while [ $retry_count -lt $max_retry ]; do
             echo -e "\033[33m[重试] 第$((retry_count+1))/$max_retry 次下载依赖...\033[0m"
-            make -j4 download V=s 2>&1 | tee ./download_${retry_count}.log  # 4线程下载
+            make -j2 download V=s 2>&1 | tee ./download_${retry_count}.log
             if [ $? -eq 0 ]; then
               echo -e "\033[32m[完成] 依赖包下载成功！\033[0m"
               break
             else
               echo -e "\033[31m[错误] 第$((retry_count+1))次下载失败\033[0m"
               retry_count=$((retry_count+1))
+              # 3次失败换源，12次失败跳过
               if [ $retry_count -eq $switch_retry ] && [ $switch_source_flag -eq 0 ]; then
                 switch_source
               fi
@@ -119,55 +139,33 @@ jobs:
         timeout-minutes: 40
         continue-on-error: true
 
-      # 步骤6：编译固件（4线程+实时百分比进度）
-      - name: 步骤6/9 - 编译固件（4线程+百分比进度）
+      # 步骤6：编译固件（2线程+阶段提示，移除awk）
+      - name: 步骤6/9 - 编译固件（2线程+阶段提示）
+        id: step6_compile_firmware
         run: |
-          echo -e "\033[31m[重要提示] 开始4线程编译固件，总耗时约40-60分钟，以下为实时进度：\033[0m"
-          # 生成编译任务总数，用于计算百分比
-          make -j4 -n V=s 2>/dev/null | grep -E '^make\[|^gcc|^g\+\+|^libtool' | wc -l > ./total_tasks.log
-          total_tasks=$(cat ./total_tasks.log)
-          echo -e "\033[33m[编译信息] 总编译任务数：$total_tasks 个\033[0m"
-          
-          # 4线程编译+实时进度百分比
-          make -j4 V=s 2>&1 | tee ./compile_raw.log | awk -v total="$total_tasks" '
-          BEGIN {
-            completed = 0;
-            last_percent = 0;
-          }
-          # 匹配编译任务行（gcc/g++/libtool）
-          /^gcc |^g\+\+ |^libtool: compile:/ {
-            completed++;
-            percent = int((completed / total) * 100);
-            # 每完成1%输出一次进度，避免日志刷屏
-            if (percent > last_percent) {
-              printf "\033[32m[编译进度] %d/%d (%d%%) 完成\033[0m\r", completed, total, percent;
-              last_percent = percent;
-              # 关键阶段单独提示
-              if (percent == 20) print "\n\033[33m[阶段提示] 正在编译libressl加密库（约占20%任务）\033[0m";
-              if (percent == 50) print "\n\033[33m[阶段提示] 正在编译内核模块（约占50%任务）\033[0m";
-              if (percent == 80) print "\n\033[33m[阶段提示] 正在编译LuCI和4G模块（约占80%任务）\033[0m";
-            }
-          }
-          # 编译完成提示
-          END {
-            print "\n\033[32m[编译完成] 总完成任务数：" completed "/" total " (100%)\033[0m";
-          }'
-          
+          echo -e "\033[31m[重要提示] 开始2线程编译固件，总耗时约40-60分钟，请耐心等待...\033[0m"
+          echo -e "\033[33m[阶段提示] 1/3：正在编译基础加密库（libressl），约15分钟\033[0m"
+          echo -e "\033[33m[阶段提示] 2/3：正在编译内核和驱动模块，约20分钟\033[0m"
+          echo -e "\033[33m[阶段提示] 3/3：正在编译LuCI和4G功能模块，约10分钟\033[0m"
+          # 核心编译命令（无awk，避免语法错误）
+          make -j2 V=s 2>&1 | tee ./compile_full.log
           # 检查编译状态
           if [ $? -ne 0 ]; then
-            echo -e "\033[31m[错误] 编译失败，日志已保存为compile_raw.log\033[0m"
+            echo -e "\033[31m[错误] 编译失败，日志已保存为compile_full.log\033[0m"
             touch ./compile_error.flag
           else
-            echo -e "\033[32m[完成] 4线程编译固件成功！\033[0m"
+            echo -e "\033[32m[完成] 固件编译成功！\033[0m"
           fi
         timeout-minutes: 90
         continue-on-error: true
 
       # 步骤7：整理产物+留存日志
       - name: 步骤7/9 - 整理固件和日志
+        id: step7_organize_files
         run: |
           echo -e "\033[32m[开始] 整理固件产物和日志...\033[0m"
           mkdir -p ./固件输出目录
+          # 复制固件产物
           if [ -d ./bin/targets/ramips/mt7620/ ]; then
             cp -rf ./bin/targets/ramips/mt7620/* ./固件输出目录/
             echo "[提示] 固件已复制到输出目录"
@@ -175,7 +173,7 @@ jobs:
             echo -e "\033[31m[错误] 未找到固件产物\033[0m"
             echo "产物缺失" > ./固件输出目录/产物缺失.log
           fi
-          # 复制所有日志
+          # 复制所有日志文件
           cp -f ./*.log ./固件输出目录/ 2>/dev/null
           cp -f ./*.flag ./固件输出目录/ 2>/dev/null
           # 生成产物清单
@@ -187,6 +185,7 @@ jobs:
 
       # 步骤8：验证固件完整性
       - name: 步骤8/9 - 验证固件完整性
+        id: step8_verify_firmware
         run: |
           echo -e "\033[32m[开始] 验证固件完整性...\033[0m"
           if [ -f ./固件输出目录/*sysupgrade.bin ]; then
@@ -202,9 +201,10 @@ jobs:
 
       # 步骤9：上传固件和日志
       - name: 步骤9/9 - 上传固件和日志
+        id: step9_upload_files
         uses: actions/upload-artifact@v4
         with:
-          name: ImmortalWrt-MT7620A-SL-IR4-4线程固件+日志
+          name: ImmortalWrt-MT7620A-SL-IR4-稳定版固件+日志
           path: ./固件输出目录/
           retention-days: 14
           if-no-files-found: warn
