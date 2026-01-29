@@ -10,7 +10,7 @@ on:
       - 'configs/ramips/mt7620/config-mt7620a-sl-ir4'
 
 jobs:
-  编译固件:
+  compile_firmware:
     runs-on: ubuntu-22.04
     timeout-minutes: 120  # 4线程编译提速，缩短全局超时
     defaults:
