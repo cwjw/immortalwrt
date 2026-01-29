@@ -44,9 +44,6 @@ jobs:
           fetch-depth: 0 # 拉取完整源码，避免文件缺失
           persist-credentials: false # 关闭凭证持久化，提升拉取速度
         timeout-minutes: 10
-        run: |
-          echo -e "\033[33m[INFO] 源码拉取完成，当前仓库目录：\033[0m"
-          pwd && ls -lh
 
       # 步骤3：加载SL-IR4专属配置文件（自动解决依赖，可视化加载日志）
       - name: 🔵 Step 3/6 - Load SL-IR4 Custom Config & Resolve Dependencies
@@ -79,9 +76,9 @@ jobs:
           mkdir -p ./firmware-output
           # 复制所有固件产物（含sysupgrade.bin刷入文件、内核镜像等）
           cp -rf ./bin/targets/ramips/mt7620/* ./firmware-output/
-          # 留存完整编译日志，方便排错
+          # 留存完整系统和编译日志，方便排错
           dmesg > ./firmware-output/dmesg.log
-          [ -f compile.log ] && cp compile.log ./firmware-output/
+          touch compile.log && cp compile.log ./firmware-output/
           echo -e "\033[32m[INFO] 编译产物整理完成，文件列表&大小如下：\033[0m"
           ls -lh ./firmware-output/ # 实时打印产物信息，确认刷入文件是否存在
           du -sh ./firmware-output/ # 打印产物总大小
