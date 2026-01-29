@@ -1,0 +1,60 @@
+# ImmortalWrt MT7620A(SL-IR4) 云编译脚本
+# 触发条件：手动触发/提交config文件触发
+name: Compile ImmortalWrt for MT7620A-SL-IR4
+
+# 触发方式：手动触发（Actions页面点Run workflow）、推送到main分支触发
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - '.config'
+
+# 编译环境：Ubuntu 20.04（GitHub云编译推荐版本）
+jobs:
+  compile:
+    runs-on: ubuntu-20.04
+    steps:
+      - name: 1. 安装编译依赖
+        run: |
+          sudo apt update -y
+          sudo apt full-upgrade -y
+          sudo apt install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
+          gettext git libncurses5-dev libssl-dev python3-distutils rsync unzip zlib1g-dev file wget \
+          curl subversion libxml2 libxml2-utils xsltproc qemu-utils upx-ucl autoconf automake \
+          libtool autopoint make libncursesw5-dev libelf-dev swig libpcre3-dev pkg-config patch \
+          qemu-system-arm qemu-system-mips tree
+
+      - name: 2. 拉取ImmortalWrt源码（自己Fork的仓库）
+        uses: actions/checkout@main
+        with:
+          repository: ${{ github.repository }}
+          ref: main
+          fetch-depth: 1
+          submodules: true
+
+      - name: 3. 加载MT7620A专属配置文件
+        run: |
+          [ -f .config ] && mv .config .config.bak
+          # 复制自定义配置为默认编译配置
+          cp configs/ramips/mt7620/config-mt7620a-sl-ir4 .config
+          # 加载配置并自动解决依赖
+          make defconfig
+
+      - name: 4. 开始编译固件
+        run: |
+          make -j$(nproc) download V=s
+          make -j$(nproc) V=s 2>&1 | tee compile.log
+
+      - name: 5. 整理编译产物
+        run: |
+          mkdir -p ./firmware-output
+          cp -rf ./bin/targets/ramips/mt7620/* ./firmware-output/
+          # 复制编译日志
+          cp compile.log ./firmware-output/
+
+      - name: 6. 上传固件到GitHub Artifacts（供下载）
+        uses: actions/upload-artifact@main
+        with:
+          name: ImmortalWrt-MT7620A-SL-IR4-Firmware
+          path: ./firmware-output/
