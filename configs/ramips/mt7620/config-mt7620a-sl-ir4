@@ -1,0 +1,79 @@
+# 基础硬件配置：MT7620A+64M+16M
+CONFIG_TARGET_ramips=y
+CONFIG_TARGET_ramips_mt7620=y
+CONFIG_TARGET_ramips_mt7620_DEVICE_generic=y
+CONFIG_TARGET_BOARD="ramips"
+CONFIG_TARGET_SUBTARGET="mt7620"
+CONFIG_TARGET_PROFILE="DEVICE_generic"
+CONFIG_TARGET_ARCH_PACKAGES="mipsel_24kc"
+CONFIG_DEFAULT_TARGET_OPTIMIZATION="-Os -mips32r2 -mtune=mt7620a"
+CONFIG_SYSROOT=/opt/immortalwrt-toolchain-mipsel_24kc_gcc-8.4.0_musl/sysroot
+CONFIG_TARGET_ROOTFS_SQUASHFS=y
+CONFIG_SQUASHFS_BLOCK_SIZE=256k
+# 适配16MB Flash（调整分区大小）
+CONFIG_TARGET_ROOTFS_PARTSIZE=12000
+CONFIG_TARGET_KERNEL_PARTSIZE=2048
+
+# 内核优化：关闭看门狗、精简日志、适配工业机
+CONFIG_KERNEL_WATCHDOG=n
+CONFIG_KERNEL_WATCHDOG_NOWAYOUT=n
+CONFIG_KERNEL_PRINTK_LEVEL=4
+CONFIG_KERNEL_DEBUG=n
+CONFIG_KERNEL_DEBUG_FS=n
+CONFIG_KERNEL_TRACEPOINTS=n
+
+# 4G拨号核心功能（QMI/MBIM/PPP+USB驱动）
+CONFIG_PACKAGE_usbserial=y
+CONFIG_PACKAGE_usbserial-option=y
+CONFIG_PACKAGE_usbserial-pl2303=y
+CONFIG_PACKAGE_cdc-wdm=y
+CONFIG_PACKAGE_libqmi=y
+CONFIG_PACKAGE_libmbim=y
+CONFIG_PACKAGE_uqmi=y
+CONFIG_PACKAGE_mbim-utils=y
+CONFIG_PACKAGE_ppp=y
+CONFIG_PACKAGE_ppp-mod-pppoe=y
+CONFIG_PACKAGE_ppp-mod-pptp=y
+CONFIG_PACKAGE_kmod-usb-net-cdc-ether=y
+CONFIG_PACKAGE_kmod-usb-net-cdc-mbim=y
+CONFIG_PACKAGE_kmod-usb-net-cdc-ncm=y
+CONFIG_PACKAGE_kmod-usb-net-qmi-wwan=y
+# 4G信号显示
+CONFIG_PACKAGE_luci-app-qmi-wwan=y
+CONFIG_PACKAGE_luci-app-mbim=y
+
+# WireGuard核心功能（内核驱动+LuCI界面）
+CONFIG_PACKAGE_kmod-wireguard=y
+CONFIG_PACKAGE_wireguard-tools=y
+CONFIG_PACKAGE_luci-app-wireguard=y
+CONFIG_PACKAGE_luci-proto-wireguard=y
+
+# LuCI界面+中文（核心基础）
+CONFIG_PACKAGE_luci=y
+CONFIG_PACKAGE_luci-base=y
+CONFIG_PACKAGE_luci-mod-admin-full=y
+CONFIG_PACKAGE_luci-theme-argon=y
+# 中文语言包
+CONFIG_PACKAGE_luci-i18n-base-zh-cn=y
+CONFIG_PACKAGE_luci-i18n-firewall-zh-cn=y
+CONFIG_PACKAGE_luci-i18n-network-zh-cn=y
+CONFIG_PACKAGE_luci-i18n-wireguard-zh-cn=y
+CONFIG_PACKAGE_luci-i18n-qmi-wwan-zh-cn=y
+
+# 基础网络功能
+CONFIG_PACKAGE_dnsmasq=y
+CONFIG_PACKAGE_firewall=y
+CONFIG_PACKAGE_iproute2=y
+CONFIG_PACKAGE_odhcpd-ipv6only=n # 禁用IPv6冗余服务
+CONFIG_PACKAGE_dropbear=y # SSH
+CONFIG_PACKAGE_uhttpd=y # LuCI网页服务
+
+# 精简无用功能（降低内存占用）
+CONFIG_PACKAGE_ntpd=n
+CONFIG_PACKAGE_samba4=n
+CONFIG_PACKAGE_upnpd=n
+CONFIG_PACKAGE_telnetd=n
+CONFIG_PACKAGE_luci-app-upnp=n
+CONFIG_PACKAGE_luci-app-samba=n
+CONFIG_PACKAGE_wpad-mesh-openssl=n
+CONFIG_PACKAGE_hostapd-utils=n # 保留hostapd核心，精简工具
